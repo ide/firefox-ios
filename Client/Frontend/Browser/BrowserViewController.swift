@@ -1376,10 +1376,12 @@ extension BrowserViewController : UIViewControllerTransitioningDelegate {
 }
 
 extension BrowserViewController : Transitionable {
-    private func hideSubviewsFromAnimation(show: Bool) {
-        self.homePanelController?.view.hidden = show
-        self.header.hidden = show
-        self.footer.hidden = show
+    private func affineTransformFromFrame(frame: CGRect, toFrame: CGRect) -> CGAffineTransform {
+        var transform = CGAffineTransformTranslate(CGAffineTransformIdentity, -frame.origin.x, -frame.origin.y);
+        transform = CGAffineTransformScale(transform, 1/frame.size.width, 1/frame.size.height);
+        transform = CGAffineTransformScale(transform, toFrame.size.width, toFrame.size.height);
+        transform = CGAffineTransformTranslate(transform, toFrame.origin.x, toFrame.origin.y);
+        return transform
     }
 
     func transitionablePreHide(transitionable: Transitionable, options: TransitionOptions) {
@@ -1389,7 +1391,8 @@ extension BrowserViewController : Transitionable {
                 tab.webView.hidden = true
             }
         }
-        self.hideSubviewsFromAnimation(true)
+
+        self.homePanelController?.view.hidden = true
     }
 
     func transitionablePreShow(transitionable: Transitionable, options: TransitionOptions) {
@@ -1399,13 +1402,33 @@ extension BrowserViewController : Transitionable {
                 tab.webView.hidden = true
             }
         }
-        self.hideSubviewsFromAnimation(true)
+        self.homePanelController?.view.hidden = true
     }
 
     func transitionableWillShow(transitionable: Transitionable, options: TransitionOptions) {
+//        view.alpha = 1
+
+        footer.transform = CGAffineTransformIdentity
+        header.transform = CGAffineTransformIdentity
     }
 
     func transitionableWillHide(transitionable: Transitionable, options: TransitionOptions) {
+//        view.alpha = 0
+
+        if let tabViewFrame = options.moving?.frame {
+            // Maintain header aspect ratio
+            let headerAspectRatio = self.header.frame.size.height / self.header.frame.size.width
+
+//            let from = self.header.frame
+            let from = CGRect(origin: CGPointZero, size: self.header.frame.size)
+
+            let scaledHeaderHeight = tabViewFrame.size.width * headerAspectRatio
+            let to = CGRect(
+                origin: tabViewFrame.origin,
+                size: CGSize(width: tabViewFrame.size.width, height: scaledHeaderHeight))
+
+            header.transform = self.affineTransformFromFrame(from, toFrame: to)
+        }
     }
 
     func transitionableWillComplete(transitionable: Transitionable, options: TransitionOptions) {
@@ -1416,8 +1439,7 @@ extension BrowserViewController : Transitionable {
             }
         }
 
-        self.updateViewConstraints()
-        self.hideSubviewsFromAnimation(false)
+        self.homePanelController?.view.hidden = false
 
         if options.toView === self {
             startTrackingAccessibilityStatus()

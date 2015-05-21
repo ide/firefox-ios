@@ -9,9 +9,6 @@ import SnapKit
 private class TabContentViewUX {
     static let TitleMargin = CGFloat(6)
     static let CloseButtonInset = CGFloat(10)
-
-    // Scaling factor to make sure landscape iPhone screenshot fills view
-    static let ImageScaleFactor = CGFloat(1.3)
 }
 
 /**
@@ -23,9 +20,10 @@ class TabContentView: UIView {
         let browserImageView = UIImageViewAligned()
         browserImageView.contentMode = UIViewContentMode.ScaleAspectFill
         browserImageView.clipsToBounds = true
+        browserImageView.userInteractionEnabled = false
         browserImageView.alignLeft = true
         browserImageView.alignTop = true
-        browserImageView.backgroundColor = UIColor.whiteColor()
+        browserImageView.backgroundColor = UIColor.redColor()
         return browserImageView
     }()
 
@@ -69,46 +67,9 @@ class TabContentView: UIView {
         return closeButton
     }()
 
-    lazy var urlBar: URLBarView = {
-        let urlBar = URLBarView()
-        urlBar.backgroundColor = UIColor.whiteColor()
-        urlBar.setShowToolbar(self.shouldDisplayToolbar())
-        return urlBar
-    }()
-
-    lazy var toolbar: BrowserToolbar = {
-        return BrowserToolbar()
-    }()
-
     private lazy var innerBorder: InnerStrokedView = {
         return InnerStrokedView()
     }()
-
-    private var titleContainerFrame: CGRect {
-        if self.expanded {
-            return CGRect(origin: self.backgroundFrame.origin, size: CGSize(width: self.bounds.size.width, height: 0))
-        } else {
-            return CGRect(origin: self.backgroundFrame.origin, size: CGSize(width: self.bounds.size.width, height: TabTrayControllerUX.TextBoxHeight))
-        }
-    }
-
-    private var backgroundFrame: CGRect {
-        var backgroundFrame = CGRect()
-
-        if self.expanded {
-            var backgroundHeight = self.bounds.size.height - AppConstants.ToolbarHeight
-            backgroundHeight -= self.shouldDisplayToolbar() ? AppConstants.ToolbarHeight : 0
-
-            backgroundFrame.origin = CGPoint(x: 0, y: (AppConstants.ToolbarHeight + AppConstants.StatusBarHeight))
-            backgroundFrame.size =
-                CGSize(width: self.bounds.size.width, height: backgroundHeight)
-        } else {
-            backgroundFrame.size = CGSize(width: self.bounds.size.width * TabContentViewUX.ImageScaleFactor, height: self.bounds.size.height * TabContentViewUX.ImageScaleFactor)
-            backgroundFrame.origin = CGPoint(x: 0, y: 0)
-        }
-
-        return backgroundFrame
-    }
 
     var expanded: Bool = false {
         didSet {
@@ -116,13 +77,12 @@ class TabContentView: UIView {
             self.closeButton.alpha = self.expanded ? 0 : 1
             self.favicon.alpha = self.expanded ? 0 : 1
             self.innerBorder.alpha = self.expanded ? 0 : 1
-
-            // Update subview frames based on the expanded flag
-            self.background.frame = self.backgroundFrame
-            self.titleContainer.frame = self.titleContainerFrame
+            self.titleContainerHeight?.updateOffset(self.expanded ? 0 : TabTrayControllerUX.TextBoxHeight)
             self.setNeedsLayout()
         }
     }
+
+    private var titleContainerHeight: Constraint?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -135,58 +95,49 @@ class TabContentView: UIView {
         self.titleContainer.addSubview(self.titleText)
         self.titleContainer.addSubview(self.favicon)
 
-        self.addSubview(self.urlBar)
-        self.addSubview(self.toolbar)
         self.addSubview(self.background)
         self.addSubview(self.titleContainer)
         self.addSubview(self.innerBorder)
+
+        self.setupConstraints()
     }
 
     required init(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
+    private func setupConstraints() {
+        self.background.snp_makeConstraints { make in
+            make.top.left.right.equalTo(self)
+        }
 
-        self.innerBorder.frame = self.backgroundFrame
+        self.titleContainer.snp_makeConstraints { make in
+            make.top.left.right.equalTo(self)
+            self.titleContainerHeight = make.height.equalTo(TabTrayControllerUX.TextBoxHeight).constraint
+        }
 
-        var urlBarFrame = CGRect()
-        urlBarFrame.origin = CGPointZero
-        urlBarFrame.size = CGSize(width: self.bounds.size.width, height: AppConstants.ToolbarHeight + AppConstants.StatusBarHeight)
-        self.urlBar.frame = urlBarFrame
+        self.favicon.snp_makeConstraints { make in
+            make.centerY.equalTo(self.titleContainer)
+            make.left.equalTo(self.titleContainer).offset(TabContentViewUX.TitleMargin)
+            make.size.equalTo(TabTrayControllerUX.FaviconSize)
+        }
 
-        var toolbarFrame = CGRect()
-        toolbarFrame.origin = CGPoint(x: 0, y: self.bounds.size.height - AppConstants.ToolbarHeight)
-        toolbarFrame.size = CGSize(width: self.bounds.size.width, height: AppConstants.ToolbarHeight)
-        self.toolbar.frame = toolbarFrame
+        self.closeButton.snp_makeConstraints { make in
+            make.centerY.equalTo(self.titleContainer)
+            make.right.equalTo(self.titleContainer)
+            make.size.equalTo(self.titleContainer.snp_height)
+        }
 
-        self.titleContainer.frame = self.titleContainerFrame
+        self.titleText.snp_makeConstraints { make in
+            make.centerY.equalTo(self.titleContainer)
+            make.left.equalTo(self.favicon.snp_right).offset(TabContentViewUX.TitleMargin)
+            make.right.greaterThanOrEqualTo(self.closeButton.snp_left)
+            make.height.equalTo(self.titleContainer)
+        }
 
-        var faviconFrame = CGRect()
-        faviconFrame.size = CGSize(width: TabTrayControllerUX.FaviconSize, height: TabTrayControllerUX.FaviconSize)
-        faviconFrame.center =
-            CGPoint(x: TabContentViewUX.TitleMargin + (TabTrayControllerUX.FaviconSize / 2), y: self.titleContainer.frame.center.y)
-        self.favicon.frame = faviconFrame
-
-        var closeFrame = CGRect()
-        closeFrame.size = CGSize(width: TabTrayControllerUX.TextBoxHeight, height: TabTrayControllerUX.TextBoxHeight)
-        closeFrame.center =
-            CGPoint(x: titleContainerFrame.size.width - TabContentViewUX.TitleMargin - (closeFrame.size.height / 2), y: CGRectGetMidY(titleContainerFrame))
-        self.closeButton.frame = closeFrame
-
-        var titleFrame = CGRect()
-        titleFrame.size = CGSize(
-                width: titleContainerFrame.size.width - (faviconFrame.size.width + TabContentViewUX.TitleMargin * 2 + closeFrame.size.width),
-                height: TabTrayControllerUX.TextBoxHeight)
-        titleFrame.center = CGPoint(x: titleContainerFrame.size.width / 2, y: titleContainerFrame.size.height / 2)
-        self.titleText.frame = titleFrame
-
-        self.background.frame = backgroundFrame
-    }
-
-    private func shouldDisplayToolbar() -> Bool {
-        return self.traitCollection.verticalSizeClass == .Compact && self.traitCollection.horizontalSizeClass == .Regular
+        self.innerBorder.snp_makeConstraints { make in
+            make.top.left.right.bottom.equalTo(self)
+        }
     }
 }
 
