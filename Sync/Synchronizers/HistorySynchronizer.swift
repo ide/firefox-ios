@@ -42,21 +42,14 @@ public class HistorySynchronizer: BaseSingleCollectionSynchronizer, Synchronizer
             // We have to reconcile on-the-fly: we're about to overwrite the server record, which
             // is our shared parent.
             let place = rec.payload.asPlace()
-            return storage.insertOrUpdatePlace(place, modified: modified)
-               >>> { storage.storeRemoteVisits(payload.visits, forGUID: guid) }
-        }
-
-        func allSucceed(arr: [Success]) -> Success {
-            return all(arr).map {
-                for x in $0 {
-                    if x.isFailure {
-                        log.error("Record application failed: \(x.failureValue)")
-                        return x
-                    }
+            let placeThenVisits = storage.insertOrUpdatePlace(place, modified: modified)
+                              >>> { storage.storeRemoteVisits(payload.visits, forGUID: guid) }
+            return placeThenVisits.map({ result in
+                if result.isFailure {
+                    log.error("Record application failed: \(result.failureValue)")
                 }
-                log.debug("Record application succeeded.")
-                return Result(success: ())
-            }
+                return result
+            })
         }
 
         func done() -> Success {
@@ -75,8 +68,7 @@ public class HistorySynchronizer: BaseSingleCollectionSynchronizer, Synchronizer
         // 2. Try to update each place. Note failures.
         // 3. bulkInsert all failed updates in one go.
         // 4. Store all remote visits for all places in one go, constructing a single sequence of visits.
-        return allSucceed(records.map(applyRecord))
-           >>> done
+        return walk(records, applyRecord)
     }
 
     private class func makeDeletedHistoryRecord(guid: GUID) -> Record<HistoryPayload> {
